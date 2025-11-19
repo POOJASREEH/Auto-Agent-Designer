@@ -1,7 +1,9 @@
 # src/eval/metrics.py
-def compute_primary(results: dict) -> dict:
+from typing import Dict
+
+def compute_primary(results: Dict) -> Dict:
     """
-    Primary metric: mission success rate = fraction of agents with score>0
+    Primary metric: mission success rate (fraction of agents with score>0)
     """
     leaderboard = results.get("leaderboard", [])
     if not leaderboard:
