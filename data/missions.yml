@@ -1,0 +1,9 @@
+- id: mission-001
+  title: "Summarize & Propose Next Experiments"
+  description: "Given a short research note, propose 3 next experiments and simple checks for each."
+  difficulty: medium
+
+- id: mission-002
+  title: "Moderation Assist"
+  description: "Given a stream of comments, detect toxic content and prioritize for review."
+  difficulty: easy
