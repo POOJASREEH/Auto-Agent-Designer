@@ -1,1 +1,3 @@
+# Prompt template: mission_parse
+# Parse the mission description and extract key objectives, inputs, and constraints.
 
