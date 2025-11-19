@@ -1,1 +1,3 @@
+# Prompt template: test_generation
+# Given a candidate agent role + prompt, produce short test cases to validate minimal behavior.
 
