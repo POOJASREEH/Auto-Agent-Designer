@@ -1,1 +1,9 @@
+# src/infra/Dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+COPY . /app
+ENV PYTHONPATH=/app/src
+CMD ["python", "-m", "src.meta_agent.generator", "--mission", "data/missions.yml"]
 
