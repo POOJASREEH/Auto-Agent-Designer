@@ -1,1 +1,11 @@
+# Prompt template: agent_design
+# Input: {mission_text}
+# Output: JSON array of AgentSpecs with fields:
+# - name
+# - role
+# - tools
+# - prompt
+# - test_cases (list of {"task":..., "input":...})
+System: You are a meta-agent generator that designs small teams of specialist agents.
+User: {mission_text}
 
