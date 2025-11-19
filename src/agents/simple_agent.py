@@ -1,25 +1,36 @@
 # src/agents/simple_agent.py
+from typing import Dict
 from .base import SpecialistAgent, AgentSpec
 
 class SimpleAgent(SpecialistAgent):
     """
-    Simple specialist agent for Day1:
-    - If role contains 'classify' or 'classifier', do naive labeling.
-    - Else echo the task.
+    Minimal deterministic agent used for Day1 demo.
+    Behaviour is heuristic and deterministic for reproducibility.
     """
-    def act(self, input_data):
+    def act(self, input_data: Dict[str, any]) -> Dict[str, any]:
         task = input_data.get("task", "")
-        # Naive classification heuristic
-        if "classify" in self.spec.role.lower() or "classifier" in self.spec.role.lower():
-            # example heuristic: contains word 'good' => positive
-            label = "positive" if "good" in task.lower() else "negative"
-            return {"response": label, "ok": True}
-        # Execution heuristic
-        if "execute" in self.spec.role.lower() or "executor" in self.spec.role.lower():
-            return {"response": f"executed:{task}", "ok": True}
-        # Planner or other: return a tiny plan
-        if "plan" in self.spec.role.lower() or "planner" in self.spec.role.lower():
-            return {"response": f"plan: step1 -> inspect; step2 -> act on '{task}'", "ok": True}
-        # default echo
-        return {"response": f"{self.spec.name} done:{task}", "ok": True}
+        content = input_data.get("input") or input_data.get("text") or ""
+        role = self.spec.role.lower()
 
+        # Classifier heuristic
+        if "classify" in role or "classifier" in role or "moderate" in role:
+            label = "positive" if "good" in content.lower() or "ok" in content.lower() else "negative"
+            return {"response": label, "ok": True, "meta": {"heuristic": "contains_good_word"}}
+
+        # Planner heuristic
+        if "plan" in role or "planner" in role:
+            plan = [
+                "inspect input",
+                "enumerate candidate actions",
+                "pick highest-priority action",
+                "execute action with executor agent"
+            ]
+            return {"response": {"plan": plan}, "ok": True}
+
+        # Executor heuristic
+        if "exec" in role or "executor" in role:
+            # Simulate action success
+            return {"response": f"executed {task}", "ok": True}
+
+        # Default echo
+        return {"response": f"{self.spec.name} handled task {task}", "ok": True}
