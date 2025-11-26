@@ -1,0 +1,2 @@
+LLM agents struggle to self-evaluate their own steps.
+We want to explore ideas for improving self-correction and planning.
