@@ -1,0 +1,25 @@
+{
+  "leaderboard": [
+    {
+      "name": "ExecutorAgent",
+      "role": "Executor",
+      "tests": 2,
+      "score": 2,
+      "trace": []
+    },
+    {
+      "name": "PlannerAgent",
+      "role": "Planner",
+      "tests": 1,
+      "score": 1,
+      "trace": []
+    },
+    {
+      "name": "ClassifierAgent",
+      "role": "Classifier",
+      "tests": 1,
+      "score": 1,
+      "trace": []
+    }
+  ]
+}
