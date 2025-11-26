@@ -1,0 +1,23 @@
+[
+  {
+    "name": "PlannerAgent",
+    "role": "Planner",
+    "tools": ["notebook", "scheduler"],
+    "prompt": "Plan steps for: research experiment",
+    "test_cases": [{"task":"create_plan","input":"research experiment"}]
+  },
+  {
+    "name": "ClassifierAgent",
+    "role": "Classifier",
+    "tools": ["simple_model"],
+    "prompt": "Classify inputs for: research experiment",
+    "test_cases": [{"task":"classify","input":"sample input comment"}]
+  },
+  {
+    "name": "ExecutorAgent",
+    "role": "Executor",
+    "tools": ["shell","api"],
+    "prompt": "Execute steps for: research experiment",
+    "test_cases": [{"task":"execute","input":"step1"}]
+  }
+]
