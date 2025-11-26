@@ -1,1 +1,34 @@
+name: Build - Docker (optional)
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "src/infra/Dockerfile"
+      - "requirements.txt"
+      - "src/**"
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/infra/Dockerfile
+          push: false
+          tags: auto-agent-designer:latest
+
+      - name: Smoke test container
+        run: |
+          docker build -f src/infra/Dockerfile -t auto-agent-designer:latest .
+          docker run --rm auto-agent-designer:latest
