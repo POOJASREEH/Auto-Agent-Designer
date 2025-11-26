@@ -1,9 +1,33 @@
+# data/missions.yml
+# Mission configurations for Auto-Agent Designer.
+# You can add as many missions as you want.
+
 - id: mission-001
-  title: "Summarize & Propose Next Experiments"
-  description: "Given a short research note, propose 3 next experiments and simple checks for each."
+  title: "Research Experiment Planner"
+  description: >
+    Given a short research note, generate 3 possible next experiments
+    with simple validation steps for each. The generated agents must plan,
+    classify, and execute minimal tasks.
   difficulty: medium
 
 - id: mission-002
-  title: "Moderation Assist"
-  description: "Given a stream of comments, detect toxic content and prioritize for review."
+  title: "Toxic Comment Moderation"
+  description: >
+    Analyze a stream of user comments, detect toxic content, label severity,
+    and suggest actions for each. The agent team should include a classifier
+    and executor.
+  difficulty: easy
+
+- id: mission-003
+  title: "Creative Brainstorming"
+  description: >
+    Given a topic, generate 5 creative ideas, cluster them,
+    and provide a short plan for execution.
+  difficulty: easy
+
+- id: mission-004
+  title: "Simple Automation Workflow"
+  description: >
+    Read an input instruction and create a minimal 3-step workflow.
+    Use planner + executor agents.
   difficulty: easy
