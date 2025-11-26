@@ -1,0 +1,10 @@
+{
+  "mission_success_rate": 1.0,
+  "num_agents": 3,
+  "top_agent": {
+    "name": "ExecutorAgent",
+    "role": "Executor",
+    "tests": 2,
+    "score": 2
+  }
+}
