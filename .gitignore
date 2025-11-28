@@ -1,1 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Jupyter/Colab
+.ipynb_checkpoints/
+*.ipynb~*
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Envs & secrets
+.env
+*.env
+
+# Results / caches
+results/
+.cache/
+.pytest_cache/
 
