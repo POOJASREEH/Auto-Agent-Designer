@@ -1,114 +1,116 @@
 # src/meta_agent/generator.py
 """
-Meta-agent generator: given a mission spec, produces AgentSpec objects.
-By default uses DummyLLM for deterministic behaviour. Plug real LLM via llm_client.py later.
+Meta-Agent Generator
+--------------------
+
+Supports two modes:
+  ✔ Evaluator / Offline mode (default): uses DummyLLM
+  ✔ Real LLM mode (optional): --provider {openai, gemini, groq}
+
+Examples:
+    # Evaluator-friendly (no keys required)
+    python -m src.meta_agent.generator --mission data/missions.yml
+
+    # With real LLM (optional)
+    export OPENAI_API_KEY=sk-...
+    python -m src.meta_agent.generator --mission data/missions.yml --provider openai
 """
-from typing import List, Dict, Any
+
 from dataclasses import asdict
-import yaml
+from typing import List
+import argparse
 import json
-import os
-import random
+import yaml
 
 from agents.base import AgentSpec
+from meta_agent.llm_client import make_llm
 
-SEED = 1234
-random.seed(SEED)
-
-class DummyLLM:
-    """
-    Simple deterministic rule-based generator to avoid requiring API keys.
-    """
-    def generate(self, mission_text: str) -> List[Dict[str, Any]]:
-        mission_lower = mission_text.lower()
-        specs = []
-
-        # Planner always useful
-        specs.append({
-            "name": "PlannerAgent",
-            "role": "Planner",
-            "tools": ["notebook", "scheduler"],
-            "prompt": f"Plan steps for: {mission_text}",
-            "test_cases": [{"task": "create_plan", "input": mission_text}]
-        })
-
-        # Classifier if mission involves moderation/text classification
-        if any(k in mission_lower for k in ["classify", "moderate", "toxic", "comments", "detect"]):
-            specs.append({
-                "name": "ClassifierAgent",
-                "role": "Classifier",
-                "tools": ["simple_model"],
-                "prompt": f"Classify inputs for: {mission_text}",
-                "test_cases": [{"task": "classify", "input": "this is good"}]
-            })
-
-        # Executor always useful
-        specs.append({
-            "name": "ExecutorAgent",
-            "role": "Executor",
-            "tools": ["shell", "api"],
-            "prompt": f"Execute steps for: {mission_text}",
-            "test_cases": [{"task": "execute", "input": "step1"}]
-        })
-
-        # Ensure at least two agents returned
-        if len(specs) < 2:
-            specs.append({
-                "name": "HelperAgent",
-                "role": "Simple",
-                "tools": [],
-                "prompt": f"Assist with: {mission_text}",
-                "test_cases": [{"task": "assist", "input": ""}]
-            })
-
-        return specs
 
 class MetaAgentGenerator:
-    def __init__(self, llm_client=None):
-        # llm_client may be provided later; default to DummyLLM
-        self.llm = llm_client or DummyLLM()
+    def __init__(self, provider: str | None = None):
+        """
+        provider: "dummy", "openai", "gemini", "groq"
+        None → default to DummyLLM (safe for evaluators)
+        """
+        self._client = make_llm(provider)
 
+    # -------------------------
+    # Load mission file
+    # -------------------------
     def load_missions(self, path: str):
         with open(path, "r") as f:
             return yaml.safe_load(f)
 
+    # -------------------------
+    # Generate AgentSpec objects
+    # -------------------------
     def generate_specs(self, mission_text: str) -> List[AgentSpec]:
-        raw = self.llm.generate(mission_text)
-        specs = []
-        for r in raw:
-            specs.append(AgentSpec(
-                name=r["name"],
-                role=r.get("role", "Simple"),
-                tools=r.get("tools", []),
-                prompt=r.get("prompt", ""),
-                test_cases=r.get("test_cases", [])
-            ))
+        raw_specs = self._client.generate_agent_design(mission_text)
+        specs: List[AgentSpec] = []
+
+        for r in raw_specs:
+            specs.append(
+                AgentSpec(
+                    name=r.get("name", "Agent"),
+                    role=r.get("role", "Simple"),
+                    tools=r.get("tools", []),
+                    prompt=r.get("prompt", ""),
+                    test_cases=r.get("test_cases", []),
+                )
+            )
+
         return specs
 
-    def run_from_file(self, mission_path: str):
+    # -------------------------
+    # Full run from missions.yml
+    # -------------------------
+    def run_from_file(self, mission_path: str) -> List[AgentSpec]:
         missions = self.load_missions(mission_path)
         if not missions:
-            raise ValueError("No missions found in file")
-        mission = missions[0]
-        text = mission.get("description", "")
-        specs = self.generate_specs(text)
-        return specs
+            raise ValueError("No missions found in the YAML file.")
+        mission_text = missions[0].get("description", "")
+        return self.generate_specs(mission_text)
 
-# CLI helper if run as module
+
+# ---------------------------------------------------
+# CLI ENTRY
+# ---------------------------------------------------
+
 def main():
-    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mission", required=True, help="Path to missions.yml")
+
+    parser.add_argument(
+        "--mission",
+        required=True,
+        help="Path to missions.yml",
+    )
+
+    parser.add_argument(
+        "--provider",
+        choices=["dummy", "openai", "gemini", "groq"],
+        default="dummy",
+        help="LLM provider (default dummy; no keys required)",
+    )
+
     args = parser.parse_args()
-    mg = MetaAgentGenerator()
-    specs = mg.run_from_file(args.mission)
-    print("=== Agent Specs ===")
+
+    # Build generator
+    gen = MetaAgentGenerator(provider=args.provider)
+
+    # Generate agent specs
+    specs = gen.run_from_file(args.mission)
+
+    # Print agent specs
+    print("\n=== Agent Specs ===")
     print(json.dumps([asdict(s) for s in specs], indent=2))
-    # run simulator
+
+    # Run simulation
     from eval.simulator import run_simulator
     results = run_simulator(specs)
-    print("=== Simulation Results ===")
+
+    print("\n=== Simulation Results ===")
     print(json.dumps(results, indent=2))
+
 
 if __name__ == "__main__":
     main()
