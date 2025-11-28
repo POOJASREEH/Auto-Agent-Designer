@@ -1,1 +1,23 @@
+[project]
+name = "auto-agent-designer"
+version = "0.1.0"
+description = "Meta-agent that designs, configures, and evaluates specialist AI agents from a mission description."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = "E203,W503"
 
