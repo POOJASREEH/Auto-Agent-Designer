@@ -2,4 +2,4 @@ PyYAML
 pydantic
 pytest
 rich
-python-dotenv
+python-dotenv 
