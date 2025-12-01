@@ -1,22 +1,26 @@
 # src/eval/simulator.py
 """
-Enhanced Simulator with Multi-Agent Pipeline Support (B5)
+Enhanced Simulator with Multi-Agent Pipeline Support (permanent version)
 
 Backwards-compatible:
-- Still returns {"leaderboard": ...} for older notebook/tests
+- Returns a top-level {"leaderboard": ...} like before
 - Adds:
     {
       "individual_tests": { "per_agent": {...}, "leaderboard": [...] },
       "pipeline": { "final_output": ..., "trace": [...] },
       "leaderboard": [...]
     }
+
+Important:
+- CoordinatorAgent is NOT treated as a normal agent in individual tests
+- Coordinator is constructed only for the pipeline path with (specs, objects)
 """
 
 from typing import List, Dict, Any
 import random
 
 from agents.base import AgentSpec
-from agents.registry import get_agent_class, AGENT_CLASSES
+from agents.registry import get_agent_class
 
 # Coordinator is optional; import defensively
 try:
@@ -27,45 +31,44 @@ except Exception:  # pragma: no cover
     _HAVE_COORDINATOR = False
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 # Instantiation helpers
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 def _instantiate(spec: AgentSpec):
     """
-    Instantiate an agent class for the provided AgentSpec using the registry.
-    NOTE: CoordinatorAgent is NOT instantiated here (it's only for the pipeline).
+    Instantiate a normal agent (single-arg constructor).
+    Skips CoordinatorAgent here; it's handled by the pipeline path.
     """
     cls = get_agent_class(spec)
-    if cls is CoordinatorAgent:
-        return None  # skip here; coordinator is constructed separately for pipeline
+    if CoordinatorAgent and cls is CoordinatorAgent:
+        return None  # skip in individual tests
     return cls(spec)
 
 
 def _instantiate_all(specs: List[AgentSpec]) -> Dict[str, Any]:
     """
-    Build a dict {agent_name: agent_instance} for convenience.
-    Skips CoordinatorAgent here as well.
+    Build a dict {agent_name: agent_instance} for pipeline orchestration.
+    Skips CoordinatorAgent; it's created separately with (specs, objects).
     """
     objs: Dict[str, Any] = {}
     for s in specs:
         cls = get_agent_class(s)
-        if cls is CoordinatorAgent:
+        if CoordinatorAgent and cls is CoordinatorAgent:
             continue
         try:
             objs[s.name] = cls(s)
         except Exception:
-            # keep sim running even if one agent fails to instantiate
+            # Keep simulator resilient even if one agent fails to construct
             continue
     return objs
 
 
-# -----------------------------------------------------------------------------
-# Individual test execution (keeps old scoring behavior)
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
+# Individual test execution (keeps legacy scoring)
+# ----------------------------------------------------------------------------- #
 def _run_individual_tests(specs: List[AgentSpec]) -> Dict[str, Any]:
     """
-    Run each agent's test_cases independently, return a dict of per-agent results
-    and the legacy 'leaderboard' list sorted by score (desc).
+    Run each agent's test_cases independently and compute legacy scores.
     CoordinatorAgent is skipped in this phase.
     """
     random.seed(1234)
@@ -75,14 +78,14 @@ def _run_individual_tests(specs: List[AgentSpec]) -> Dict[str, Any]:
     for s in specs:
         agent = _instantiate(s)
         if agent is None:
-            # likely CoordinatorAgent; skip from individual scoring
+            # likely CoordinatorAgent; skip scoring as a normal agent
             continue
 
         tests_run = 0
         score = 0
         trace = []
 
-        for tc in s.test_cases:
+        for tc in getattr(s, "test_cases", []):
             tests_run += 1
             input_data = {"task": tc.get("task", ""), "input": tc.get("input", "")}
             try:
@@ -112,9 +115,9 @@ def _run_individual_tests(specs: List[AgentSpec]) -> Dict[str, Any]:
     }
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 # Multi-agent pipeline (Coordinator)
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 def _run_pipeline(specs: List[AgentSpec]) -> Dict[str, Any]:
     """
     Execute a sequential pipeline using CoordinatorAgent if available.
@@ -124,20 +127,20 @@ def _run_pipeline(specs: List[AgentSpec]) -> Dict[str, Any]:
     if not _HAVE_COORDINATOR:
         return {"final_output": None, "trace": [], "note": "CoordinatorAgent not available"}
 
-    # build objects keyed by name (no coordinator)
+    # Build object map (no coordinator here)
     obj_map = _instantiate_all(specs)
 
-    # Coordinator takes specs + object map and runs a pipeline
+    # Coordinator takes (specs, obj_map) and runs the pipeline
     coord = CoordinatorAgent(specs, obj_map)
     out = coord.run_pipeline(initial_input="start")
 
-    # out: {"final_output": <...>, "trace": [ {agent, task, input, output}, ... ]}
+    # out = {"final_output": <...>, "trace": [ {agent, task, input, output}, ... ]}
     return out
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 # Public API
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- #
 def run_simulator(specs: List[AgentSpec]) -> Dict[str, Any]:
     """
     Unified simulator entrypoint.
