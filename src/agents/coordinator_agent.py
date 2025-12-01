@@ -1,106 +1,122 @@
 # src/agents/coordinator_agent.py
 """
-CoordinatorAgent — Multi-Agent Orchestration (B5)
+CoordinatorAgent — Orchestrates a multi-agent pipeline.
 
-Purpose
--------
-Run a simple, deterministic pipeline across the agents produced by the meta-agent.
-The coordinator:
-  • Chooses a sensible step order
-  • For each agent, picks a default task (from its first test_case or 'run')
-  • Calls agent.act(...) using the same dict shape as the simulator
-  • Feeds each agent's output into the next as input
-  • Records a detailed trace for later visualization
-
-This file is evaluator-safe (no external deps) and works offline.
+Fixes included:
+- Proper normalization of outputs between steps using _to_scalar_text()
+- Prevents downstream agents from receiving dicts/lists they cannot parse
+- Ensures pipeline always flows smoothly
 """
 
-from typing import Any, Dict, List
+from typing import List, Dict, Any
+from agents.base import AgentSpec
 
 
 class CoordinatorAgent:
-    def __init__(self, agent_specs: List[Any], agent_objects: Dict[str, Any]):
+    """
+    Coordinator that runs a sequential pipeline:
+    Planner → Classifier → Extractor → Summarizer → Critic → Executor
+    Only agents that exist in the project will be called.
+
+    Args:
+        agent_specs  : list of AgentSpec
+        agent_objects: {name: instantiated agent object}
+    """
+
+    ORDER = [
+        "PlannerAgent",
+        "ClassifierAgent",
+        "ExtractorAgent",
+        "SummarizerAgent",
+        "CriticAgent",
+        "ExecutorAgent",
+    ]
+
+    def __init__(self, agent_specs: List[AgentSpec], agent_objects: Dict[str, Any]):
+        self.specs = agent_specs
+        self.objects = agent_objects
+        self.available_names = set(agent_objects.keys())
+
+    # ----------------------------------------------------------------------
+    # Normalize any agent's output into clean SCALAR TEXT for next step
+    # ----------------------------------------------------------------------
+    def _to_scalar_text(self, value):
         """
-        Parameters
-        ----------
-        agent_specs : list of AgentSpec
-            Dataclass instances describing each agent (name, role, tools, prompt, test_cases).
-        agent_objects : dict[str, Agent]
-            Instantiated agent objects, keyed by agent name. Each object exposes .act(input_dict).
+        Convert prior agent output → friendly string.
+
+        Handles:
+        - {"plan": [...]} → bullet list
+        - list → joined lines
+        - dict → compact JSON
+        - numbers, booleans, strings → str()
         """
-        self.agent_specs = agent_specs
-        self.agent_objects = agent_objects
-        # quick index for spec lookup by name
-        self._spec_by_name = {getattr(s, "name", ""): s for s in agent_specs}
-        self.trace: List[Dict[str, Any]] = []
+        try:
+            # PLAN case: {"plan": [...]}
+            if isinstance(value, dict) and "plan" in value and isinstance(value["plan"], list):
+                lines = [f"- {str(x)}" for x in value["plan"]]
+                return "Plan:\n" + "\n".join(lines)
 
-    def _default_task_for(self, agent_name: str) -> str:
-        """Pick a default task for the agent (first test case if available, else 'run')."""
-        spec = self._spec_by_name.get(agent_name)
-        if spec and getattr(spec, "test_cases", None):
-            tc0 = spec.test_cases[0]
-            return str(tc0.get("task", "run"))
-        return "run"
+            # List case
+            if isinstance(value, list):
+                return "\n".join(f"- {str(x)}" for x in value)
 
-    def _append_trace(self, agent_name: str, task: str, input_value: Any, output: Dict[str, Any]):
-        self.trace.append(
-            {
-                "agent": agent_name,
-                "task": task,
-                "input": input_value,
-                "output": output,
-            }
-        )
+            # Generic dict → JSON
+            if isinstance(value, dict):
+                import json
+                return json.dumps(value, ensure_ascii=False)
 
-    def run_pipeline(self, initial_input: Any = "start") -> Dict[str, Any]:
-        """
-        Execute a simple, fixed-order pipeline using whichever agents exist:
+            # Scalar
+            return str(value)
 
-            Planner → Classifier → Extractor → Summarizer → Critic → Executor
+        except Exception:
+            return str(value)
 
-        Only agents present in agent_objects are executed.
-        The output of one step becomes the input to the next step.
+    # ----------------------------------------------------------------------
+    # Main pipeline execution
+    # ----------------------------------------------------------------------
+    def run_pipeline(self, initial_input="start") -> Dict[str, Any]:
+        trace = []
+        current_input = initial_input
 
-        Returns
-        -------
-        dict with:
-            final_output : str|dict|Any   (best-effort scalarization)
-            trace        : list of {agent, task, input, output}
-        """
-        order = [
-            "PlannerAgent",
-            "ClassifierAgent",
-            "ExtractorAgent",
-            "SummarizerAgent",
-            "CriticAgent",
-            "ExecutorAgent",
-        ]
+        for role_name in self.ORDER:
 
-        current_input: Any = initial_input
+            if role_name not in self.available_names:
+                # Skip missing agents
+                continue
 
-        for name in order:
-            agent = self.agent_objects.get(name)
+            agent = self.objects.get(role_name)
             if agent is None:
-                continue  # skip missing agents gracefully
+                continue
 
-            task = self._default_task_for(name)
+            # Build task input
+            inp = {
+                "task": "pipeline_step",
+                "input": current_input
+            }
 
-            # Act uses the SAME shape as your simulator: {"task": ..., "input": ...}
+            # Execute
             try:
-                output = agent.act({"task": task, "input": current_input})
+                output = agent.act(inp)
             except Exception as e:
                 output = {"response": None, "ok": False, "error": str(e)}
 
-            # Log the step
-            self._append_trace(name, task, current_input, output)
+            trace.append({
+                "agent": role_name,
+                "task": "pipeline_step",
+                "input": current_input,
+                "output": output
+            })
 
-            # Feed response to next step
-            # Prefer a clean scalar for "current_input" if available.
+            # Feed clean, normalized output into next step
             if isinstance(output, dict):
-                # Use 'response' if present; otherwise pass the whole dict forward
-                next_input = output.get("response", output)
+                raw = output.get("response", output)
             else:
-                next_input = output
-            current_input = next_input
+                raw = output
 
-        return {"final_output": current_input, "trace": self.trace}
+            current_input = self._to_scalar_text(raw)
+
+        # Final output of pipeline
+        return {
+            "final_output": current_input,
+            "trace": trace
+        }
