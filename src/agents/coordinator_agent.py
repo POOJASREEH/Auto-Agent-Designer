@@ -1,28 +1,20 @@
 # src/agents/coordinator_agent.py
 """
-CoordinatorAgent — Orchestrates a multi-agent pipeline.
+CoordinatorAgent — Orchestrates a multi-agent pipeline (permanent version)
 
-Fixes included:
-- Proper normalization of outputs between steps using _to_scalar_text()
-- Prevents downstream agents from receiving dicts/lists they cannot parse
-- Ensures pipeline always flows smoothly
+- Normalizes outputs between steps so downstream agents receive readable text
+- Uses first test_case's task (if present) as the step's task; otherwise a sensible default
+- Deterministic, evaluator-safe, no external dependencies
+
+Pipeline order (only runs agents that exist):
+    Planner → Classifier → Extractor → Summarizer → Critic → Executor
 """
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 from agents.base import AgentSpec
 
 
 class CoordinatorAgent:
-    """
-    Coordinator that runs a sequential pipeline:
-    Planner → Classifier → Extractor → Summarizer → Critic → Executor
-    Only agents that exist in the project will be called.
-
-    Args:
-        agent_specs  : list of AgentSpec
-        agent_objects: {name: instantiated agent object}
-    """
-
     ORDER = [
         "PlannerAgent",
         "ClassifierAgent",
@@ -33,90 +25,80 @@ class CoordinatorAgent:
     ]
 
     def __init__(self, agent_specs: List[AgentSpec], agent_objects: Dict[str, Any]):
-        self.specs = agent_specs
-        self.objects = agent_objects
-        self.available_names = set(agent_objects.keys())
+        # Canonical attribute names used by simulator
+        self.specs: List[AgentSpec] = agent_specs
+        self.objects: Dict[str, Any] = agent_objects
 
-    # ----------------------------------------------------------------------
-    # Normalize any agent's output into clean SCALAR TEXT for next step
-    # ----------------------------------------------------------------------
-    def _to_scalar_text(self, value):
+    # ------------------------------------------------------------------ #
+    # Helpers
+    # ------------------------------------------------------------------ #
+    def _default_task_for(self, agent_name: str) -> str:
+        """Pick a default task for an agent (first test_case.task if available)."""
+        spec_map = {getattr(s, "name", ""): s for s in self.specs}
+        spec = spec_map.get(agent_name)
+        if spec and getattr(spec, "test_cases", None):
+            return str(spec.test_cases[0].get("task", "pipeline_step"))
+        return "pipeline_step"
+
+    def _to_scalar_text(self, value: Any) -> str:
         """
-        Convert prior agent output → friendly string.
-
+        Convert an agent's output into a clean string for the next step.
         Handles:
-        - {"plan": [...]} → bullet list
-        - list → joined lines
-        - dict → compact JSON
-        - numbers, booleans, strings → str()
+            - {"plan": [...]}  →  "Plan:\n- item\n- item"
+            - list             →  "- item\n- item"
+            - dict             →  compact JSON
+            - scalars          →  str(...)
         """
         try:
-            # PLAN case: {"plan": [...]}
             if isinstance(value, dict) and "plan" in value and isinstance(value["plan"], list):
-                lines = [f"- {str(x)}" for x in value["plan"]]
-                return "Plan:\n" + "\n".join(lines)
-
-            # List case
+                return "Plan:\n" + "\n".join(f"- {str(x)}" for x in value["plan"])
             if isinstance(value, list):
                 return "\n".join(f"- {str(x)}" for x in value)
-
-            # Generic dict → JSON
             if isinstance(value, dict):
                 import json
                 return json.dumps(value, ensure_ascii=False)
-
-            # Scalar
             return str(value)
-
         except Exception:
             return str(value)
 
-    # ----------------------------------------------------------------------
-    # Main pipeline execution
-    # ----------------------------------------------------------------------
-    def run_pipeline(self, initial_input="start") -> Dict[str, Any]:
-        trace = []
-        current_input = initial_input
+    # ------------------------------------------------------------------ #
+    # Main
+    # ------------------------------------------------------------------ #
+    def run_pipeline(self, initial_input: Any = "start") -> Dict[str, Any]:
+        """
+        Execute the sequential pipeline across available agents.
+        Returns:
+            {
+              "final_output": <str>,
+              "trace": [ {agent, task, input, output}, ... ]
+            }
+        """
+        trace: List[Dict[str, Any]] = []
+        current_input: Any = initial_input
 
-        for role_name in self.ORDER:
-
-            if role_name not in self.available_names:
-                # Skip missing agents
-                continue
-
-            agent = self.objects.get(role_name)
+        for name in self.ORDER:
+            agent = self.objects.get(name)
             if agent is None:
                 continue
 
-            # Build task input
-            inp = {
-                "task": "pipeline_step",
-                "input": current_input
-            }
+            task = self._default_task_for(name)
 
-            # Execute
+            # Simulator-compatible input shape
+            step_input = {"task": task, "input": current_input}
             try:
-                output = agent.act(inp)
+                output = agent.act(step_input)
             except Exception as e:
                 output = {"response": None, "ok": False, "error": str(e)}
 
             trace.append({
-                "agent": role_name,
-                "task": "pipeline_step",
+                "agent": name,
+                "task": task,
                 "input": current_input,
-                "output": output
+                "output": output,
             })
 
-            # Feed clean, normalized output into next step
-            if isinstance(output, dict):
-                raw = output.get("response", output)
-            else:
-                raw = output
-
+            # Normalize to clean text for next step
+            raw = output.get("response", output) if isinstance(output, dict) else output
             current_input = self._to_scalar_text(raw)
 
-        # Final output of pipeline
-        return {
-            "final_output": current_input,
-            "trace": trace
-        }
+        return {"final_output": current_input, "trace": trace}
