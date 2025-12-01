@@ -1,7 +1,6 @@
 # Auto-Agent Designer 
 
-A meta-agent that automatically designs, configures, and evaluates** specialist AI agents from a mission description.  
-Lightweight, reproducible, and Kaggle-friendly.
+A meta-agent that automatically designs, configures, and evaluates specialist AI agents from a mission description.
 
 ## What it does
 1. Reads a mission (e.g., “moderate toxic comments”).
