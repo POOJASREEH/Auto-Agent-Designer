@@ -1,4 +1,4 @@
-*Auto-Agent-Designer*
+**Auto-Agent-Designer**
 
 A Meta-Agent System That Designs, Evaluates, and Coordinates Specialist AI Agents
 
